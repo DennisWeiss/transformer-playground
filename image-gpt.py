@@ -39,7 +39,7 @@ train_dataset = torchvision.datasets.CIFAR10(
         torchvision.transforms.ToTensor()
     ])
 )
-train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=1)
+train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=16)
 
 test_dataset = torchvision.datasets.CIFAR10(
     root='./data',
@@ -50,7 +50,7 @@ test_dataset = torchvision.datasets.CIFAR10(
         torchvision.transforms.ToTensor()
     ])
 )
-test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=1)
+test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=16)
 
 image_processor = ImageGPTImageProcessor.from_pretrained("openai/imagegpt-small")
 model = ImageGPTModel.from_pretrained('openai/imagegpt-small')
@@ -64,25 +64,20 @@ outputs = model(**inputs, output_hidden_states=True)
 last_hidden_states = outputs.last_hidden_state
 
 
-nominal_data = np.zeros((0, 512))
-anomalous_data = np.zeros((0, 512))
+x_data = np.zeros((0, 512))
+y_data = np.zeros((0, 1))
 
 for x, y in tqdm(train_dataloader):
-    if nominal_data.shape[0] >= 200 and anomalous_data.shape[0] >= 200:
-        break
+    inputs = image_processor(images=x[0], return_tensors="pt").to(device)
+    outputs = model(**inputs, output_hidden_states=True)
+    representation = outputs.hidden_states[len(outputs.hidden_states)//2].mean(dim=1)
 
-    if (y[0] == 0 and nominal_data.shape[0] < 200) or (y[0] != 0 and anomalous_data.shape[0] < 200):
-        inputs = image_processor(images=x[0], return_tensors="pt").to(device)
-        outputs = model(**inputs, output_hidden_states=True)
-        representation = outputs.hidden_states[len(outputs.hidden_states)//2].mean(dim=1)
-
-        if y[0] == 0:
-            nominal_data = np.append(nominal_data, representation[0].detach().reshape(1, -1).cpu().numpy(), axis=0)
-        else:
-            anomalous_data = np.append(anomalous_data, representation[0].detach().reshape(1, -1).cpu().numpy(), axis=0)
+    x_data = np.append(x_data, representation.detach().cpu().numpy(), axis=0)
+    print((y == 0).detach().cpu().numpy())
+    y_data = np.append(y_data, (y == 0).detach().cpu().numpy(), axis=0)
 
 
-draw_tsne_visualization(np.append(nominal_data, anomalous_data, axis=0), 200, 0, 200, 200)
+# draw_tsne_visualization(np.append(nominal_data, anomalous_data, axis=0), 200, 0, 200, 200)
 
 representation = outputs.hidden_states[len(outputs.hidden_states)//2].mean(dim=1)
 
