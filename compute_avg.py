@@ -1,7 +1,7 @@
 import pandas as pd
 
 
-df = pd.read_csv('data-vit2.csv')
+df = pd.read_csv('data-beit.csv')
 model_name = 'DeepDataDepthAnomalyDetector'
 sub_dataset = 'CIFAR10'
 # model_name = 'MostNaive'

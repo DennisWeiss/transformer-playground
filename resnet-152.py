@@ -6,8 +6,7 @@ import torch.utils.data
 from PIL import Image
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from transformers import ImageGPTImageProcessor, ImageGPTModel, ImageGPTFeatureExtractor, ViTFeatureExtractor, ViTModel, \
-    ViTForImageClassification, AutoFeatureExtractor, AutoModelForImageClassification
+from transformers import AutoFeatureExtractor, ResNetForImageClassification, AutoModelForImageClassification
 from sklearn.manifold import TSNE
 import numpy as np
 from datasets import load_dataset
@@ -55,48 +54,44 @@ image = Image.open(requests.get(url, stream=True).raw)
 # )
 # test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=1)
 
-sample_item_index = 21
-
 train_data = load_dataset('cifar10', split='train')
 train_data_loader = torch.utils.data.DataLoader(train_data.with_format('torch'), batch_size=2)
 test_data = load_dataset('cifar10', split='test')
 test_data_loader = torch.utils.data.DataLoader(test_data.with_format('torch'), batch_size=2)
 
+sample_item_index = 10
+
 print(train_data[sample_item_index])
-plt.imshow(train_data[sample_item_index]['img'])
-plt.show()
 plt.imshow(train_data[sample_item_index]['img'].resize((224, 224)))
 plt.show()
 
-image_feature_extractor = AutoFeatureExtractor.from_pretrained("microsoft/beit-base-patch16-224")
-model = AutoModelForImageClassification.from_pretrained('microsoft/beit-base-patch16-224')
+image_feature_extractor = AutoFeatureExtractor.from_pretrained('microsoft/resnet-152')
+model = AutoModelForImageClassification.from_pretrained('microsoft/resnet-152')
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
 # inputs = image_feature_extractor(images=train_data[sample_item_index]['img'].resize((224, 224)), return_tensors="pt")
+#
 # print(inputs.pixel_values.shape)
 # plt.imshow(tf.to_pil_image(inputs.pixel_values[0]))
 # plt.show()
-#
 #
 # outputs = model(inputs.pixel_values.to(device), output_hidden_states=True)
 # hidden_states = outputs.hidden_states
 #
 # print(len(hidden_states))
-# print(hidden_states[0].shape)
-# print(hidden_states[-1].mean(dim=1).shape)
-#
+# print(hidden_states[-1].shape)
+# print(hidden_states[-1].mean(dim=1).reshape(hidden_states[-1].shape[0], -1)[0].norm())
 # class_index = outputs.logits.argmax(-1).item()
 # print(model.config.id2label[class_index])
 # print(f'p={100*torch.softmax(outputs.logits, dim=1)[0][class_index]:.2f}%')
 
 
-
 for normal_class in range(10):
     print(f"Normal class: {normal_class}")
-    x_data = np.zeros((0, 768))
+    x_data = np.zeros((0, 49))
     y_data = np.zeros(0)
 
     count_normal = 0
@@ -113,10 +108,10 @@ for normal_class in range(10):
             count_anomalous += 1
 
         inputs = image_feature_extractor(train_data[i]['img'].resize((224, 224)), return_tensors="pt")
-        outputs = model(inputs.pixel_values.to(device), output_hidden_states=True)
-        representation = outputs.hidden_states[-1].mean(dim=1)
+        outputs = model(inputs.pixel_values.to(device), output_hidden_states=True, return_dict=True)
+        representation = outputs.hidden_states[-1].mean(dim=1).reshape(outputs.hidden_states[-1].shape[0], -1)
 
         x_data = np.append(x_data, representation.detach().cpu().numpy(), axis=0)
         y_data = np.append(y_data, np.asarray([int(train_data[i]['label'] != normal_class)]), axis=0)
 
-    np.savez_compressed(f'CV_by_BEiT/CIFAR10_{normal_class}.npz', X=x_data, y=y_data)
+    np.savez_compressed(f'CV_by_ResNet152/CIFAR10_{normal_class}.npz', X=x_data, y=y_data)
