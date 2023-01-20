@@ -5,7 +5,7 @@ import torch.utils.data
 from PIL import Image
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from transformers import ImageGPTImageProcessor, ImageGPTModel, ImageGPTFeatureExtractor
+from transformers import ImageGPTImageProcessor, ImageGPTModel, ImageGPTFeatureExtractor, ViTFeatureExtractor, ViTModel, ViTForImageClassification
 from sklearn.manifold import TSNE
 import numpy as np
 from datasets import load_dataset
@@ -59,33 +59,51 @@ test_data = load_dataset('cifar10', split='test')
 test_data_loader = torch.utils.data.DataLoader(test_data.with_format('torch'), batch_size=2)
 
 print(train_data[0])
+plt.imshow(train_data[0]['img'])
+plt.show()
 
-image_feature_extractor = ImageGPTFeatureExtractor.from_pretrained("openai/imagegpt-medium")
-model = ImageGPTModel.from_pretrained('openai/imagegpt-medium')
+image_feature_extractor = ViTFeatureExtractor.from_pretrained("google/vit-base-patch16-224")
+model = ViTForImageClassification.from_pretrained('google/vit-base-patch16-224')
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
 # inputs = image_feature_extractor(images=train_data[0:1]['img'], return_tensors="pt")
-# outputs = model(inputs.input_ids.to(device), output_hidden_states=True)
+# print(inputs.pixel_values.shape)
+#
+# outputs = model(inputs.pixel_values.to(device), output_hidden_states=True)
 # hidden_states = outputs.hidden_states
 #
+# print(len(hidden_states))
+# print(hidden_states[0].shape)
 # print(hidden_states[len(hidden_states)//2].mean(dim=1).shape)
+
 
 
 for normal_class in range(10):
     print(f"Normal class: {normal_class}")
-    x_data = np.zeros((0, 1024))
+    x_data = np.zeros((0, 768))
     y_data = np.zeros(0)
 
+    count_normal = 0
+    count_anomalous = 0
+
     for i in tqdm(range(len(train_data))):
+        if train_data[i]['label'] == normal_class:
+            if count_normal >= 9_500:
+                continue
+            count_normal += 1
+        else:
+            if count_anomalous >= 275:
+                continue
+            count_anomalous += 1
+
         inputs = image_feature_extractor(train_data[i]['img'], return_tensors="pt")
-        print(inputs.input_ids)
-        outputs = model(inputs.input_ids.to(device), output_hidden_states=True)
-        representation = outputs.hidden_states[len(outputs.hidden_states)//2].mean(dim=1)
+        outputs = model(inputs.pixel_values.to(device), output_hidden_states=True)
+        representation = outputs.hidden_states[12].mean(dim=1)
 
         x_data = np.append(x_data, representation.detach().cpu().numpy(), axis=0)
-        y_data = np.append(y_data, np.asarray([int(train_data[i]['label'] == normal_class)]), axis=0)
+        y_data = np.append(y_data, np.asarray([int(train_data[i]['label'] != normal_class)]), axis=0)
 
-    np.savez_compressed(f'CIFAR10_{normal_class}_imagegpt-medium.npz', X=x_data, y=y_data)
+    np.savez_compressed(f'CIFAR10_{normal_class}_vit-b-16-last-layer-avg.npz', X=x_data, y=y_data)
